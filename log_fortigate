@@ -1,0 +1,100 @@
+input {
+   udp {
+     port => 1514
+     type => "fortigate"
+     tags => ["2000d"]
+        codec => plain {
+        charset => "ISO-8859-1"
+        }
+ }
+#file {
+#    type => "fortigate"
+#    path => "/etc/logstash/conf.d/raw2.log"
+#    sincedb_path => "/dev/null"
+#    start_position => "beginning"
+#  }
+}
+
+
+filter {
+#The Fortigate syslog contains a type field as well, we'll need to rename that field in order for this to work
+#  mutate {
+#    rename => {"msg" => "message"}
+#}
+ if [type] == "fortigate" {
+        grok {
+                        match => ["message", "%{SYSLOG5424PRI:syslog_index}%{GREEDYDATA:message}"]
+                        overwrite => [ "message" ]
+                        tag_on_failure => [ "forti_grok_failure" ]
+                }
+
+        kv {
+    source => "message"
+        exclude_keys => [ "type", "subtype" ]
+#       trim => "<>[],"
+#       trimkey => "<>[],"
+        trim_value         => "<>,"
+    value_split => "="
+#Expects you have csv enable set on your Fortigate. If not I think you'll have to change it to " " but I didn't test that.
+    field_split => " "
+ #   field_split => ","
+        tag_on_failure => [ "forti_kv_failure" ]
+}
+    mutate {
+#I want to use the timestamp inside the logs instead of Logstash's timestamp so we'll first create a new field containing the date and time fields from the syslog before we convert that to the @timestamp field
+#    add_field => { "nst_time" => "%{date} %{time}" }
+#The syslog contains a type field which messes with the Logstash type field so we have to rename it.
+    rename => { "type" => "ftg_type" }
+    rename => { "subtype" => "ftg_subtype" }
+    add_field => { "type" => "fortigate" }
+}
+
+        geoip { source => "dst" }
+        geoip { source => "dstip" }
+        geoip { source => "src" }
+        geoip { source => "srcip" }
+
+
+mutate {
+
+            rename => [ "dst", "dst_ip" ]
+            rename => [ "dstip", "dst_ip" ]
+            rename => [ "dstport", "dst_port" ]
+            rename => [ "devname", "device_id" ]
+            rename => [ "status", "action" ]
+            rename => [ "src", "src_ip" ]
+            rename => [ "srcip", "src_ip" ]
+            rename => [ "zone", "src_intf" ]
+            rename => [ "srcintf", "src_intf" ]
+            rename => [ "srcport", "src_port" ]
+            rename => [ "rcvd", "byte_recieved" ]
+            rename => [ "rcvdbyte", "bytes_recieved" ]
+            rename => [ "sentbyte", "bytes_sent" ]
+            rename => [ "sent", "bytes_sent" ]
+            convert => ["bytes_recieved", "integer"]
+            convert => ["bytes_sent", "integer"]
+            remove_field => [ "message" ]
+            remove_field => [ "msg" ]
+    }
+
+    mutate {
+#add/remove fields as you see fit.
+    remove_field => ["date","time","log_id","poluuid","devid","devname","logid","vd","srcmac","mastersrcmac","sessionid","device_id","ftg_type","host","appid","applist","syslog_index","syslog5424_pri","geoip.country_code3","geoip.location.lat","geoip.location.lon","trandisp"]
+#    remove_field => ["syslog_index","syslog5424_pri","path","service","date","time","sentpkt","rcvdpkt","log_id","message","poluuid","devid","devname","logid","vd","srcmac","mastersrcmac","sessionid","device_id","ftg_type","host","appid","applist"]
+    #remove_field => ["syslog_index","syslog5424_pri","path","service","date","time","sentpkt","rcvdpkt","log_id","poluuid","devid","devname","logid","vd","srcmac","mastersrcmac","sessionid"]
+}
+}
+}
+
+
+
+output {
+if [type] == "fortigate" {
+        elasticsearch {
+        hosts => ["hostname:9200"]
+        index => "fortigate-%{+YYYY.MM.dd}"
+        user => elastic
+        password => ""
+}
+}
+}
