@@ -1,0 +1,27 @@
+input {
+    beats {
+        port => "5044"
+    }
+}
+filter {
+        grok {
+                match => ["message","%{TIMESTAMP_ISO8601:time} %{HOSTNAME:servername} %{IPORHOST:target}\[%{NUMBER:id}\]\: %{IPORHOST:clientip} (%{IPORHOST:geoip}|-) (%{IPORHOST:remoteuser}|-) \[(?:%{TIMESTAMP_ISO8601:timestamp1}?|%{HTTPDATE:timestamp})\] %{QUOTEDSTRING:status1} %{NUMBER:httpcode} %{NUMBER:bytes} %{QS:referer} %{QS:agenth}"]
+        }
+        geoip {
+                source => "clientip"
+        }
+}
+output {
+
+         if "_grokparsefailure" in [tags] {
+            file {"path" => "/tmp/gork_dect500_failure.txt"}
+        }
+        else {
+                elasticsearch {
+                        hosts => ["hostname:9200"]
+                        index => "weblog-%{+YYYY.MM.dd}"
+                        user => elastic
+                        password => ""
+                }
+        }
+}
