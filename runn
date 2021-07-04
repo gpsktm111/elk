@@ -1,1 +1,5 @@
 curator ./curator-action.yml --config ./curator-config.yml
+
+ curl -u username -XPUT -H "Content-Type: application/json"  http://hostname:9200/_all/_settings -d '{"index.blocks.read_only_allow_delete": null}'
+ 
+ curl -u username -XPUT -H "Content-Type: application/json" http://hostname:9200/_cluster/settings -d '{ "transient": { "cluster.routing.allocation.disk.threshold_enabled": false } }'
